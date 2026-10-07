@@ -1,0 +1,6 @@
+interface:
+  display_name: "위키 검색"
+  short_description: "질문과 관련된 위키 근거를 찾아 출처와 함께 답합니다."
+  default_prompt: "Use $wiki-search to answer this question from the wiki with source links."
+policy:
+  allow_implicit_invocation: true

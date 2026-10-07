@@ -1,0 +1,6 @@
+interface:
+  display_name: "위키 작성"
+  short_description: "대화와 메모를 새 위키 문서나 로그로 정리합니다."
+  default_prompt: "Use $wiki-write to turn this conversation into a durable wiki document."
+policy:
+  allow_implicit_invocation: true

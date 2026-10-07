@@ -1,0 +1,6 @@
+interface:
+  display_name: "위키 업데이트"
+  short_description: "기존 위키 문서를 찾아 최신 내용으로 안전하게 갱신합니다."
+  default_prompt: "Use $wiki-update to merge this information into the right existing wiki document."
+policy:
+  allow_implicit_invocation: true
