@@ -21,9 +21,10 @@ tags:
 type: topic
 status: active
 created: 2026-10-08
-updated: 2026-10-08
+updated: 2026-10-09
 index: true
-related: []
+related:
+  - topic-frontend-web-mobile-core-concepts
 ---
 
 # WebView와 네이티브 앱의 브리지 통신 설계
@@ -392,4 +393,4 @@ WebView 브리지에서 직접 호출은 작은 통제된 문제를 단순하게
 
 ## 관련 문서
 
-- 없음
+- [웹·모바일 프론트엔드 업무를 위한 핵심 개념](frontend-web-mobile-core-concepts.md)
