@@ -1,7 +1,7 @@
 ---
 id: topic-frontend-web-mobile-core-concepts
 title: 웹·모바일 프론트엔드 업무를 위한 핵심 개념
-summary: 모노레포, Module Federation, TanStack Query, SSR·CSR, WebView, 디자인 시스템, 사용자 분석과 A/B 테스트를 기존 문제·해결 방식·실무 한계와 꼬리질문으로 설명한다.
+summary: 모노레포, Module Federation, TanStack Query, SSR·CSR, WebView, 디자인 시스템, 사용자 분석과 A/B 테스트를 기존 문제·해결 방식·실무 한계와 꼬리질문으로 설명하고, 이벤트 루프와 렌더링 성능 심화 문서를 연결한다.
 aliases:
   - 프론트엔드 핵심 개념
   - 웹 모바일 공용 코드
@@ -19,10 +19,12 @@ tags:
 type: topic
 status: active
 created: 2026-10-09
-updated: 2026-10-09
+updated: 2026-10-10
 index: true
 related:
   - topic-webview-native-bridge-communication
+  - topic-event-loop-rendering-timing
+  - topic-rendering-pipeline-performance
 ---
 
 # 웹·모바일 프론트엔드 업무를 위한 핵심 개념
@@ -198,7 +200,8 @@ GTM의 dataLayer는 앱의 의미 있는 이벤트와 변수를 태그에 전달
 
 | 기본기 | 위 업무에서 필요한 이유 |
 |---|---|
-| JavaScript 비동기·이벤트 루프 | 요청 순서, 응답 경합, 브리지 통신과 UI 멈춤 이해 |
+| JavaScript 비동기·이벤트 루프 | [실행 시점과 UI 멈춤 이해](event-loop-rendering-timing.md): 요청 순서, 응답 경합, 브리지 통신 |
+| 브라우저 렌더링과 성능 진단 | [렌더링 단계와 병목 측정](rendering-pipeline-performance.md): 강제 레이아웃, 스크롤 지연, WebView 성능 |
 | TypeScript와 런타임 검증 | 공용 계약 표현 및 외부 API·메시지 입력 검증 |
 | React 렌더·Effect·정리 함수 | 중복 요청·구독 누수·분석 이벤트 중복 방지 |
 | HTTP 캐시·쿠키·CORS·CSP | 인증, 리소스 로딩, 출처 정책과 캐시 문제 해결 |
@@ -222,3 +225,5 @@ TypeScript 타입은 실행 시 API 데이터를 검증하지 않는다. CORS는
 ## 관련 문서
 
 - [WebView와 네이티브 앱의 브리지 통신 설계](webview-native-bridge-communication.md)
+- [이벤트 루프와 브라우저 렌더링 타이밍](event-loop-rendering-timing.md)
+- [렌더링 파이프라인과 성능 병목 진단](rendering-pipeline-performance.md)
