@@ -1,105 +1,96 @@
 ---
 id: topic-audio-duration-and-truncated
-title: VBR 오디오 duration 오표시와 truncated 재생 UI 대응
-summary: 전체 길이 정보가 불완전한 VBR 오디오의 duration을 브라우저가 잘못 추정하는 문제와, 서버 durationMs 및 truncated 여부에 따라 커스텀 재생 UI를 분리하는 해결책을 정리한다.
+title: Truncated 오디오의 재생 시간 계산
+summary: Footer가 없는 truncated 오디오는 서버에서 전체 파일을 파싱해야 재생 시간을 알 수 있다. 웹이 이미 내려받은 오디오 바이트를 브라우저에서 디코딩해 실제 재생 시간을 계산하는 개선 방향과 주의점을 정리한다.
 aliases:
-  - 오디오 1분 47초가 7분으로 표시되는 문제
-  - audio duration VBR 오류
-  - truncated 오디오 플레이어
+  - truncated 오디오 duration 계산
+  - footer 없는 오디오 재생 시간
+  - Web Audio API duration
+  - VBR 오디오 duration 오표시
 tags:
   - audio
-  - vbr
   - duration
   - truncated
-  - react
+  - blob
+  - web-audio-api
   - debugging
 type: topic
 status: active
 created: 2026-10-12
-updated: 2026-10-12
+updated: 2026-10-13
 index: true
 related: []
 ---
 
-# VBR 오디오 duration 오표시와 truncated 재생 UI 대응
+# Truncated 오디오의 재생 시간 계산
 
-> 아래 컴포넌트 이름은 역할을 설명하기 위한 가칭이며, 프로젝트 규칙에 맞게 변경할 수 있다.
+## 핵심 요약
 
-## 원인
+- 정상 파일은 footer의 메타데이터에서 재생 시간을 바로 읽을 수 있어 `O(1)`이다.
+- 녹음 도중 앱이 종료되어 footer가 기록되지 않은 truncated 파일은, 서버가 전체 프레임을 파싱해야 하므로 파일 크기에 비례해 느려진다.
+- 웹은 오디오 바이트 전체를 이미 받고 있으므로, 해당 바이트를 브라우저에서 디코딩해 실제 재생 시간을 계산할 수 있다.
+- 단, truncated 파일의 디코딩 허용 여부는 오디오 포맷과 브라우저 구현에 따라 달라질 수 있으므로 실패 처리와 호환성 검증이 필요하다.
 
-`<audio controls>`가 사용하는 오디오 파일에 신뢰할 수 있는 전체 재생 시간 정보가 없다.
+## 문제 상황
 
-브라우저는 이런 경우 파일 초반 프레임에서 확인한 비트레이트와 파일 크기 등을 기준으로 `duration`을 추정할 수 있다. 해당 파일은 VBR(가변 비트레이트) 오디오이므로 초반 비트레이트와 실제 평균 비트레이트가 달랐고, 그 결과 실제 **1분 47초**인 녹음이 약 **7분**으로 표시됐다.
+서버는 앱이 녹음한 오디오 파일을 웹에 내려준다. 녹음 도중 앱이 종료되면 파일에 footer가 기록되지 않을 수 있으며, 이 파일을 `truncated`로 본다.
 
-> 핵심: 오디오가 실제로 7분인 것이 아니라, 브라우저가 전체 길이를 잘못 추정한 것이다.
+정상 파일은 재생 시간이 메타데이터에 이미 계산되어 있어 서버가 값을 읽기만 하면 된다. 반면 truncated 파일에는 해당 메타데이터가 없으므로, 서버가 파일을 처음부터 끝까지 디코딩하거나 파싱해 프레임 수를 직접 세어야 한다. 이는 단순한 메타데이터 조회가 아니라 파일 전체를 순회하는 작업이어서 파일 크기에 비례해 처리 시간이 늘어난다.
 
-## 해결 방향
+> **개념 — footer:** 파일 끝에 기록되는 메타데이터 영역으로, 전체 재생 시간이나 프레임 정보 등을 담을 수 있다.
 
-서버가 계산 가능한 경우 정확한 `durationMs`를 API로 내려준다. 프론트는 네이티브 `<audio controls>`를 사용하지 않고, `durationMs` 존재 여부에 따라 두 종류의 플레이어를 사용한다.
+> **개념 — `O(1)`과 `O(n)`:** `O(1)`은 파일 크기와 무관한 조회이고, `O(n)`은 파일이 커질수록 처리량도 함께 늘어나는 작업이다.
 
-| 조건 | 서버의 `durationMs` | 프론트 UI |
-|---|---:|---|
-| `truncated = false` | 정확한 재생 시간 | `DurationAwareAudioPlayer` — API의 `durationMs`를 슬라이더 최댓값으로 사용하고 정확한 재생 위치와 총 길이를 표시한다. |
-| `truncated = true` | `null` | `ElapsedOnlyAudioPlayer` — 슬라이더와 총 길이는 표시하지 않고, 재생·일시정지 버튼과 현재까지의 경과 시간만 표시한다. |
+## 웹이 오디오를 받는 방식
 
-`truncated = true`인 녹음에는 footer가 없어서 `endedAt` 자체가 존재하지 않는다. 따라서 서버가 신뢰할 수 있는 전체 길이를 계산할 수 없으며 `durationMs`는 `null`로 반환한다.
+오디오 조회 API를 호출하면 응답 바디로 복호화된 오디오 바이트 전체가 내려온다. 웹은 이를 `Blob`으로 받는다.
 
-> 핵심: `durationMs = null`은 길이가 0이라는 뜻이 아니라, 신뢰할 수 있는 전체 길이를 알 수 없다는 뜻이다.
+인증 헤더가 필요한 요청이므로 `<audio src="url">`가 서버 URL을 직접 읽는 방식이 아니라, 웹이 먼저 요청을 보내 파일 전체를 메모리에 들고 있는 구조다. 따라서 여기서 말하는 “스트림”은 실시간 재생 스트림이라기보다 **오디오 파일 전체를 구성하는 바이트 데이터**에 가깝다.
 
-## 프론트 분기
+> **개념 — `Blob`:** 브라우저에서 이미지·오디오 같은 바이너리 데이터를 하나의 덩어리로 다루는 객체다.
 
-`AudioRecordingPlayback`은 `truncated`를 다시 해석하기보다 API의 최종 결과인 `durationMs` 존재 여부를 기준으로 분기한다.
+## 받은 바이트를 재생하는 방식
 
-```tsx
-if (audioObjectUrl) {
-  const hasKnownDuration = durationMs !== null;
+웹은 `Blob`을 `URL.createObjectURL()`로 브라우저 메모리를 가리키는 임시 URL로 바꾼 뒤, 이 URL을 `<audio>` 태그의 `src`에 넣는다.
 
-  if (hasKnownDuration) {
-    return (
-      <DurationAwareAudioPlayer
-        src={audioObjectUrl}
-        durationMs={durationMs}
-        onError={onPlaybackError}
-      />
-    );
-  }
+브라우저의 오디오 엔진은 해당 URL을 일반 오디오 파일처럼 읽어 재생한다. 서버가 내려준 바이트를 다른 포맷으로 변환하는 과정은 없다.
 
-  return (
-    <ElapsedOnlyAudioPlayer
-      src={audioObjectUrl}
-      onError={onPlaybackError}
-    />
-  );
-}
+> **개념 — Object URL:** 브라우저 메모리에 있는 `Blob`을 URL처럼 참조할 수 있게 만든 임시 주소다.
+
+## 같은 바이트로 재생 시간을 계산하는 방식
+
+재생에 사용한 것과 같은 바이트를 브라우저의 오디오 디코딩 API에도 전달한다. 예를 들어 `AudioContext.decodeAudioData()`로 전체 데이터를 디코딩하면 실제 PCM 샘플 수와 샘플링 레이트를 얻을 수 있다.
+
+재생 시간은 다음과 같이 계산된다.
+
+```text
+재생 시간(초) = 디코딩된 샘플 수 ÷ 샘플링 레이트
 ```
 
-> 핵심: API의 `durationMs`를 받아도 네이티브 `<audio controls>`의 `duration`을 덮어쓸 수는 없다. 정확한 슬라이더를 만들려면 커스텀 컨트롤이 필요하다.
+이 값은 파일 앞부분의 비트레이트와 전체 크기로 추정한 값이 아니라, 실제로 디코딩된 샘플을 기준으로 한 값이다. 따라서 브라우저의 네이티브 `<audio>` 요소가 VBR 파일 등의 재생 시간을 부정확하게 추정하는 문제를 피할 수 있다.
 
-## 필요한 변경 범위
+브라우저 디코더가 해당 truncated 파일을 허용한다면, footer가 없어도 정상적으로 읽힌 프레임까지 디코딩해 실제 재생 시간을 계산할 수 있다.
 
-1. **백엔드**
-   - `AudioRecordingLog` 응답에 `durationMs: number | null`을 추가한다.
-   - `truncated = false`이면 정확한 duration을 밀리초 단위로 반환한다.
-   - `truncated = true`이면 `durationMs: null`을 반환한다.
+> **개념 — PCM:** 압축된 오디오를 재생하기 위해 풀어낸 원시 샘플 데이터다.
 
-2. **프론트 타입**
-   - `types.ts`의 `AudioRecordingLog`에 다음 필드를 추가한다.
+> **개념 — 샘플링 레이트:** 1초 동안 기록된 오디오 샘플의 수로, 예를 들어 48 kHz는 초당 48,000개를 뜻한다.
 
-   ```ts
-   durationMs: number | null;
-   ```
+## 개선 방향
 
-3. **프론트 플레이어**
-   - `AudioRecordingSection.tsx`에 다음 커스텀 플레이어를 추가한다.
-     - `DurationAwareAudioPlayer`: 슬라이더, 현재 시간, 총 길이 표시
-     - `ElapsedOnlyAudioPlayer`: 재생·일시정지와 경과 시간만 표시
-   - `AudioRecordingPlayback`에서 `durationMs !== null`을 기준으로 두 플레이어를 분기한다.
+서버가 duration이나 bitrate를 별도로 계산해 내려주는 대신, 웹이 이미 받은 오디오 바이트를 디코딩해 정확한 재생 시간을 구한다. 기존처럼 truncated 파일의 총 길이를 포기하고 경과 시간만 표시할 필요 없이, 디코딩에 성공하면 정확한 총 길이와 재생바를 제공할 수 있다.
 
-## 최종 동작
+다만 이 방식도 파일 전체를 디코딩하므로 계산량 자체는 `O(n)`이다. 서버의 작업을 없애는 대신 브라우저의 CPU와 메모리를 사용한다는 점을 고려해야 한다. 정상 파일은 메타데이터 값을 그대로 사용하는 편이 더 효율적일 수 있다.
 
-- 정상 녹음은 서버 duration을 기준으로 정확한 재생바와 총 길이를 보여준다.
-- truncated 녹음은 알 수 없는 총 길이를 추정하거나 잘못된 슬라이더를 보여주지 않는다.
-- 두 경우 모두 브라우저가 잘못 계산한 네이티브 duration에 UI가 의존하지 않는다.
+## 적용 시 확인할 점
+
+- 실제 서비스의 오디오 포맷과 대상 브라우저에서 footer 없는 파일이 디코딩되는지 확인한다.
+- `decodeAudioData()` 실패 시 기존의 경과 시간 전용 UI 등 대체 동작을 유지한다.
+- 큰 파일에서 디코딩 시간과 브라우저 메모리 사용량을 측정한다.
+- 같은 `Blob`을 재생과 길이 계산에 재사용해 네트워크 요청이 중복되지 않게 한다.
+
+## 결론
+
+웹이 이미 내려받은 오디오 바이트를 활용하면 서버에서 truncated 파일 전체를 다시 파싱하지 않고도 재생 시간을 계산할 수 있다. 구현의 핵심은 같은 `Blob`을 재생용 Object URL과 브라우저 디코딩 양쪽에 재사용하는 것이다. 단, 포맷·브라우저별 truncated 디코딩 지원 여부를 검증하고 실패 시 대체 UI를 제공해야 한다.
 
 ## 관련 문서
 
